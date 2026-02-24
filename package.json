@@ -1,0 +1,56 @@
+{
+  "name": "alittlebitofmoney-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for ALBOM catalog-aware paid OpenAI proxy tools",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "alittlebitofmoney-mcp": "./dist/server.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "start:dev": "tsx src/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke:live": "tsx scripts/live-smoke.ts",
+    "prepack": "npm run clean && npm run build",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "mcp",
+    "alittlebitofmoney",
+    "openai",
+    "server"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "undici": "^7.22.0",
+    "vitest": "^4.0.18"
+  }
+}

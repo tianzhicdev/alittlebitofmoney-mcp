@@ -3,6 +3,11 @@ import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 export type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 export type ToolProfile = "compact" | "full";
+
+export interface L402AuthCredentials {
+  macaroon: string;
+  preimage: string;
+}
 export type PriceType = "per_model" | "flat";
 export type EndpointContentType = "json" | "multipart";
 

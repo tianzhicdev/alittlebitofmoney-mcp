@@ -43,6 +43,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@getalby/sdk": "^7.0.0",
     "@modelcontextprotocol/sdk": "^1.27.0",
     "zod": "^4.3.6"
   },

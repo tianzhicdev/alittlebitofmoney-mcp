@@ -4,6 +4,7 @@ import type {
   CatalogState,
   EndpointDescriptor,
   FullEndpointTool,
+  L402AuthCredentials,
   PlannedTool,
   PreparedUpload,
   ToolState
@@ -59,7 +60,7 @@ export class AlbomToolExecutor {
     this.getToolState = deps.getToolState;
   }
 
-  public async execute(tool: PlannedTool, rawArgs: unknown): Promise<AlbomToolResult> {
+  public async execute(tool: PlannedTool, rawArgs: unknown, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     try {
       const args = asRecord(rawArgs);
 
@@ -67,25 +68,25 @@ export class AlbomToolExecutor {
         case "catalog_get":
           return this.handleCatalogGet(args);
         case "text_generate":
-          return this.handleTextGenerate(tool.endpointPath, args);
+          return this.handleTextGenerate(tool.endpointPath, args, l402Auth);
         case "image_generate":
-          return this.handleImageGenerate(tool.endpointPath, args);
+          return this.handleImageGenerate(tool.endpointPath, args, l402Auth);
         case "image_edit":
-          return this.handleImageEdit(tool.endpointPath, args);
+          return this.handleImageEdit(tool.endpointPath, args, l402Auth);
         case "audio_transcribe":
-          return this.handleAudioTranscribe(tool.endpointPath, tool.translationEndpointPath, args);
+          return this.handleAudioTranscribe(tool.endpointPath, tool.translationEndpointPath, args, l402Auth);
         case "audio_speech":
-          return this.handleAudioSpeech(tool.endpointPath, args);
+          return this.handleAudioSpeech(tool.endpointPath, args, l402Auth);
         case "video_generate":
-          return this.handleVideoGenerate(tool.endpointPath, args);
+          return this.handleVideoGenerate(tool.endpointPath, args, l402Auth);
         case "safety_moderate":
-          return this.handleModeration(tool.endpointPath, args);
+          return this.handleModeration(tool.endpointPath, args, l402Auth);
         case "embedding_create":
-          return this.handleEmbedding(tool.endpointPath, args);
+          return this.handleEmbedding(tool.endpointPath, args, l402Auth);
         case "full_endpoint":
-          return this.handleFullEndpoint(tool, args);
+          return this.handleFullEndpoint(tool, args, l402Auth);
         case "raw_call":
-          return this.handleRawCall(args);
+          return this.handleRawCall(args, l402Auth);
         default:
           throw new AlbomRuntimeError("unknown_tool", `Unhandled tool kind ${(tool as PlannedTool).kind}`, 500);
       }
@@ -143,13 +144,14 @@ export class AlbomToolExecutor {
   private async callJson(
     endpointPath: string,
     body: Record<string, unknown>,
-    options: { model?: string; allowL402Quote: boolean }
+    options: { model?: string; allowL402Quote: boolean; l402Auth?: L402AuthCredentials }
   ): Promise<AlbomToolResult> {
     const endpoint = this.getEndpoint(endpointPath);
 
     try {
       const response = await this.httpClient.postJson(endpointPath, body, {
-        allowL402Quote: options.allowL402Quote
+        allowL402Quote: options.allowL402Quote,
+        l402Auth: options.l402Auth
       });
       const price = resolvePriceSats(endpoint)(options.model);
       return fromHttpResponse(endpointPath, response, options.model, price);
@@ -162,13 +164,14 @@ export class AlbomToolExecutor {
     endpointPath: string,
     fields: Record<string, unknown>,
     uploads: PreparedUpload[],
-    options: { model?: string; allowL402Quote: boolean }
+    options: { model?: string; allowL402Quote: boolean; l402Auth?: L402AuthCredentials }
   ): Promise<AlbomToolResult> {
     const endpoint = this.getEndpoint(endpointPath);
 
     try {
       const response = await this.httpClient.postMultipart(endpointPath, fields, uploads, {
-        allowL402Quote: options.allowL402Quote
+        allowL402Quote: options.allowL402Quote,
+        l402Auth: options.l402Auth
       });
       const price = resolvePriceSats(endpoint)(options.model);
       return fromHttpResponse(endpointPath, response, options.model, price);
@@ -177,7 +180,7 @@ export class AlbomToolExecutor {
     }
   }
 
-  private async handleTextGenerate(endpointPath: string, args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleTextGenerate(endpointPath: string, args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     const model = this.requireString(args, "model");
     if (!("input" in args)) {
       throw new AlbomRuntimeError("invalid_input", "Missing required field: input", 400);
@@ -201,11 +204,12 @@ export class AlbomToolExecutor {
 
     return this.callJson(endpointPath, body, {
       model,
-      allowL402Quote: this.allowL402Quote(args)
+      allowL402Quote: this.allowL402Quote(args),
+      l402Auth
     });
   }
 
-  private async handleImageGenerate(endpointPath: string, args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleImageGenerate(endpointPath: string, args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     const model = this.requireString(args, "model");
     const prompt = this.requireString(args, "prompt");
 
@@ -220,11 +224,12 @@ export class AlbomToolExecutor {
 
     return this.callJson(endpointPath, body, {
       model,
-      allowL402Quote: this.allowL402Quote(args)
+      allowL402Quote: this.allowL402Quote(args),
+      l402Auth
     });
   }
 
-  private async handleImageEdit(endpointPath: string, args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleImageEdit(endpointPath: string, args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     const model = this.requireString(args, "model");
     const prompt = this.requireString(args, "prompt");
 
@@ -264,14 +269,16 @@ export class AlbomToolExecutor {
 
     return this.callMultipart(endpointPath, fields, uploads, {
       model,
-      allowL402Quote: this.allowL402Quote(args)
+      allowL402Quote: this.allowL402Quote(args),
+      l402Auth
     });
   }
 
   private async handleAudioTranscribe(
     endpointPath: string,
     translationEndpointPath: string | undefined,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    l402Auth?: L402AuthCredentials
   ): Promise<AlbomToolResult> {
     const translateToEnglish = asBoolean(args.translate_to_english, false);
     const resolvedEndpoint = translateToEnglish && translationEndpointPath ? translationEndpointPath : endpointPath;
@@ -300,11 +307,12 @@ export class AlbomToolExecutor {
 
     return this.callMultipart(resolvedEndpoint, fields, [audioUpload], {
       model,
-      allowL402Quote: this.allowL402Quote(args)
+      allowL402Quote: this.allowL402Quote(args),
+      l402Auth
     });
   }
 
-  private async handleAudioSpeech(endpointPath: string, args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleAudioSpeech(endpointPath: string, args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     const model = this.requireString(args, "model");
     const voice = this.requireString(args, "voice");
     const input = this.requireString(args, "input");
@@ -324,11 +332,12 @@ export class AlbomToolExecutor {
 
     return this.callJson(endpointPath, body, {
       model,
-      allowL402Quote: this.allowL402Quote(args)
+      allowL402Quote: this.allowL402Quote(args),
+      l402Auth
     });
   }
 
-  private async handleVideoGenerate(endpointPath: string, args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleVideoGenerate(endpointPath: string, args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     const model = this.requireString(args, "model");
     const prompt = this.requireString(args, "prompt");
 
@@ -342,11 +351,12 @@ export class AlbomToolExecutor {
 
     return this.callJson(endpointPath, body, {
       model,
-      allowL402Quote: this.allowL402Quote(args)
+      allowL402Quote: this.allowL402Quote(args),
+      l402Auth
     });
   }
 
-  private async handleModeration(endpointPath: string, args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleModeration(endpointPath: string, args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     if (!("input" in args)) {
       throw new AlbomRuntimeError("invalid_input", "Missing required field: input", 400);
     }
@@ -360,11 +370,12 @@ export class AlbomToolExecutor {
 
     return this.callJson(endpointPath, body, {
       model,
-      allowL402Quote: this.allowL402Quote(args)
+      allowL402Quote: this.allowL402Quote(args),
+      l402Auth
     });
   }
 
-  private async handleEmbedding(endpointPath: string, args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleEmbedding(endpointPath: string, args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     if (!("input" in args)) {
       throw new AlbomRuntimeError("invalid_input", "Missing required field: input", 400);
     }
@@ -378,11 +389,12 @@ export class AlbomToolExecutor {
 
     return this.callJson(endpointPath, body, {
       model,
-      allowL402Quote: this.allowL402Quote(args)
+      allowL402Quote: this.allowL402Quote(args),
+      l402Auth
     });
   }
 
-  private async handleFullEndpoint(tool: FullEndpointTool, args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleFullEndpoint(tool: FullEndpointTool, args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     const model = asString(args.model);
     const allowL402Quote = this.allowL402Quote(args);
 
@@ -394,7 +406,8 @@ export class AlbomToolExecutor {
 
       return this.callJson(tool.endpointPath, body, {
         model,
-        allowL402Quote
+        allowL402Quote,
+        l402Auth
       });
     }
 
@@ -421,12 +434,13 @@ export class AlbomToolExecutor {
       upload ? [upload] : [],
       {
         model,
-        allowL402Quote
+        allowL402Quote,
+        l402Auth
       }
     );
   }
 
-  private async handleRawCall(args: Record<string, unknown>): Promise<AlbomToolResult> {
+  private async handleRawCall(args: Record<string, unknown>, l402Auth?: L402AuthCredentials): Promise<AlbomToolResult> {
     const endpointPath = this.requireString(args, "endpoint");
     const catalog = this.getCatalogState();
 
@@ -447,7 +461,8 @@ export class AlbomToolExecutor {
 
       return this.callJson(endpointPath, body, {
         model,
-        allowL402Quote
+        allowL402Quote,
+        l402Auth
       });
     }
 
@@ -474,7 +489,8 @@ export class AlbomToolExecutor {
 
     return this.callMultipart(endpointPath, fields, upload ? [upload] : [], {
       model,
-      allowL402Quote
+      allowL402Quote,
+      l402Auth
     });
   }
 }

@@ -1,8 +1,12 @@
 import type { ToolProfile } from "./types.js";
 
+export type PaymentMode = "bearer" | "nwc" | "l402_passthrough";
+
 export interface AlbomConfig {
   baseUrl: string;
   bearerToken?: string;
+  nwcUrl?: string;
+  paymentMode: PaymentMode;
   toolProfile: ToolProfile;
   includeModeration: boolean;
   includeEmbeddings: boolean;
@@ -68,15 +72,30 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "");
 }
 
+function derivePaymentMode(bearerToken?: string, nwcUrl?: string): PaymentMode {
+  if (bearerToken) {
+    return "bearer";
+  }
+  if (nwcUrl) {
+    return "nwc";
+  }
+  return "l402_passthrough";
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AlbomConfig {
   const toolProfile = parseToolProfile(env.ALBOM_TOOL_PROFILE);
 
   const includeModerationFromEnv = parseBoolean(env.ALBOM_INCLUDE_MODERATION);
   const includeEmbeddingsFromEnv = parseBoolean(env.ALBOM_INCLUDE_EMBEDDINGS);
 
+  const bearerToken = env.ALBOM_BEARER_TOKEN?.trim() || undefined;
+  const nwcUrl = env.ALBOM_NWC_URL?.trim() || undefined;
+
   return {
     baseUrl: normalizeBaseUrl(env.ALBOM_BASE_URL ?? DEFAULTS.baseUrl),
-    bearerToken: env.ALBOM_BEARER_TOKEN?.trim() || undefined,
+    bearerToken,
+    nwcUrl,
+    paymentMode: derivePaymentMode(bearerToken, nwcUrl),
     toolProfile,
     includeModeration: includeModerationFromEnv ?? toolProfile === "full",
     includeEmbeddings: includeEmbeddingsFromEnv ?? toolProfile === "full",

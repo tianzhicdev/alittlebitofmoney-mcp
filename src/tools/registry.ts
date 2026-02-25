@@ -1,9 +1,10 @@
 import type { AlbomConfig } from "../config.js";
 import { buildToolState } from "../dedup.js";
 import { AlbomHttpClient } from "../httpClient.js";
+import type { L402TokenCache } from "../l402.js";
 import type { CatalogState, ToolState } from "../types.js";
 import { AlbomToolExecutor } from "./executor.js";
-import { registerPlannedTool, type RegisteredToolHandle, type ToolServerLike } from "./registration.js";
+import { registerPlannedTool, type L402PassthroughContext, type RegisteredToolHandle, type ToolServerLike } from "./registration.js";
 
 interface CatalogProvider {
   getState: (options?: { refresh?: boolean }) => Promise<CatalogState>;
@@ -15,6 +16,7 @@ interface ToolRegistryOptions {
   server: ToolServerLike;
   catalogProvider: CatalogProvider;
   httpClient: AlbomHttpClient;
+  l402TokenCache?: L402TokenCache;
 }
 
 export class AlbomToolRegistry {
@@ -22,6 +24,7 @@ export class AlbomToolRegistry {
   private readonly server: ToolServerLike;
   private readonly catalogProvider: CatalogProvider;
   private readonly httpClient: AlbomHttpClient;
+  private readonly l402Context: L402PassthroughContext | undefined;
 
   private toolState: ToolState | undefined;
   private catalogState: CatalogState | undefined;
@@ -32,6 +35,9 @@ export class AlbomToolRegistry {
     this.server = options.server;
     this.catalogProvider = options.catalogProvider;
     this.httpClient = options.httpClient;
+    this.l402Context = options.l402TokenCache
+      ? { tokenCache: options.l402TokenCache }
+      : undefined;
   }
 
   public currentToolState(): ToolState | undefined {
@@ -98,7 +104,9 @@ export class AlbomToolRegistry {
     });
 
     for (const tool of nextToolState.tools) {
-      this.registeredTools.push(registerPlannedTool(this.server, tool, executor));
+      this.registeredTools.push(
+        registerPlannedTool(this.server, tool, executor, this.config.paymentMode, this.l402Context)
+      );
     }
   }
 }

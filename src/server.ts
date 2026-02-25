@@ -4,7 +4,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
 import { CatalogManager } from "./catalog.js";
-import { AlbomHttpClient } from "./httpClient.js";
+import { AlbomHttpClient, type L402Handler } from "./httpClient.js";
+import { L402TokenCache } from "./l402.js";
+import { NwcWallet } from "./wallet.js";
 import { AlbomToolRegistry } from "./tools/registry.js";
 import { toErrorMessage } from "./utils.js";
 
@@ -34,9 +36,29 @@ async function main(): Promise<void> {
     }
   );
 
+  // Mode A: NWC wallet for auto-paying L402 invoices
+  let wallet: NwcWallet | undefined;
+  let l402Handler: L402Handler | undefined;
+
+  if (config.paymentMode === "nwc" && config.nwcUrl) {
+    wallet = new NwcWallet({ nwcUrl: config.nwcUrl });
+    l402Handler = {
+      async handlePaymentRequired(challenge) {
+        const result = await wallet!.payInvoice(challenge.invoice);
+        return { preimage: result.preimage };
+      }
+    };
+    console.error(`[${SERVER_NAME}] NWC wallet configured — L402 auto-pay enabled`);
+  }
+
+  // L402 token cache (used by Mode C for macaroon caching, and lightweight enough to always create)
+  const l402TokenCache = new L402TokenCache();
+  l402TokenCache.startCleanup();
+
   const httpClient = new AlbomHttpClient({
     baseUrl: config.baseUrl,
     bearerToken: config.bearerToken,
+    l402Handler,
     timeoutMs: config.httpTimeoutMs,
     maxRetries: config.maxRetries
   });
@@ -48,8 +70,15 @@ async function main(): Promise<void> {
       getState: (options) => catalogManager.getState(options),
       snapshot: () => catalogManager.snapshot()
     },
-    httpClient
+    httpClient,
+    l402TokenCache
   });
+
+  if (config.paymentMode === "bearer") {
+    console.error(`[${SERVER_NAME}] bearer token configured — direct API access`);
+  } else if (config.paymentMode === "l402_passthrough") {
+    console.error(`[${SERVER_NAME}] no auth configured — L402 passthrough mode (tools will return invoices)`);
+  }
 
   await registry.initialize();
 
@@ -69,6 +98,8 @@ async function main(): Promise<void> {
   const cleanup = async (): Promise<void> => {
     clearInterval(refreshTimer);
     registry.dispose();
+    l402TokenCache.dispose();
+    wallet?.dispose();
     try {
       await server.close();
     } catch {

@@ -10,6 +10,7 @@ function makeConfig(overrides: Partial<AlbomConfig> = {}): AlbomConfig {
   return {
     baseUrl: "https://alittlebitofmoney.com",
     bearerToken: "token",
+    paymentMode: "bearer",
     toolProfile: "full",
     includeModeration: true,
     includeEmbeddings: true,

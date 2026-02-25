@@ -80,6 +80,40 @@ function mapErrorCode(status: number, data: unknown): string {
   return "upstream_error";
 }
 
+function extractL402Macaroon(wwwAuth: string | undefined): string | undefined {
+  if (!wwwAuth) {
+    return undefined;
+  }
+
+  const l402Match = /^L402\s+/i.exec(wwwAuth);
+  if (!l402Match) {
+    return undefined;
+  }
+
+  const paramStr = wwwAuth.slice(l402Match[0].length);
+
+  // Match: macaroon="value" or token="value"
+  const quotedMacaroon = /(?:macaroon|token)="([^"]*)"/i.exec(paramStr);
+  if (quotedMacaroon?.[1]) {
+    let mac = quotedMacaroon[1];
+    if (mac.endsWith(":")) {
+      mac = mac.slice(0, -1);
+    }
+    return mac;
+  }
+
+  const unquotedMacaroon = /(?:macaroon|token)=([^,\s]+)/i.exec(paramStr);
+  if (unquotedMacaroon?.[1]) {
+    let mac = unquotedMacaroon[1];
+    if (mac.endsWith(":")) {
+      mac = mac.slice(0, -1);
+    }
+    return mac;
+  }
+
+  return undefined;
+}
+
 function extractPaymentMetadata(data: unknown, headers: Record<string, string>): Record<string, unknown> {
   if (!isRecord(data)) {
     return {};
@@ -103,6 +137,12 @@ function extractPaymentMetadata(data: unknown, headers: Record<string, string>):
 
   if (topupHeader) {
     metadata.topup_url = topupHeader;
+  }
+
+  // Extract L402 macaroon from WWW-Authenticate header for Mode C caching
+  const macaroon = extractL402Macaroon(headers["www-authenticate"]);
+  if (macaroon) {
+    metadata.macaroon = macaroon;
   }
 
   return metadata;

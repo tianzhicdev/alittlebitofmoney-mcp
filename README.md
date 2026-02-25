@@ -1,8 +1,22 @@
 # alittlebitofmoney-mcp
 
-Catalog-aware MCP server for `https://alittlebitofmoney.com` with compact/full tool profiles, bearer-first paid API routing, and dynamic tool refresh notifications.
+MCP (Model Context Protocol) server for [alittlebitofmoney.com](https://alittlebitofmoney.com) - a Lightning-paid API proxy. Provides catalog-aware tools with compact/full profiles, bearer-first authentication, and dynamic tool refresh notifications.
 
-## Quick start
+**Please update me when there are feature changes.**
+
+## Features
+
+- **Two Tool Profiles**: Compact (optimized for agents) or Full (comprehensive endpoint coverage)
+- **Catalog Synchronization**: Auto-fetches and tracks API catalog changes
+- **Bearer Token Auth**: First-class support for prepaid balance tokens
+- **Dynamic Tool Updates**: Notifies clients when catalog changes via MCP notifications
+- **Smart Consolidation**: Compact profile merges overlapping endpoints to reduce tool clutter
+- **TypeScript Native**: Full TypeScript implementation with type safety
+- **Comprehensive Testing**: Unit tests for catalog validation, deduplication, HTTP handling, and multipart uploads
+
+## Quick Start
+
+### Installation
 
 ```bash
 npm install
@@ -10,72 +24,268 @@ npm run build
 npm test
 ```
 
-Run over stdio:
+### Run via stdio
 
 ```bash
-ALBOM_BEARER_TOKEN=... npm start
+ALBOM_BEARER_TOKEN=<your_token> npm start
 ```
 
-## Environment
+### NPM Package
 
-- `ALBOM_BASE_URL` default: `https://alittlebitofmoney.com`
-- `ALBOM_BEARER_TOKEN` optional but strongly recommended
-- `ALBOM_TOOL_PROFILE` default: `compact` (`compact` or `full`)
-- `ALBOM_INCLUDE_MODERATION` default: `false` in compact, `true` in full
-- `ALBOM_INCLUDE_EMBEDDINGS` default: `false` in compact, `true` in full
-- `ALBOM_INCLUDE_VIDEO` default: `true`
-- `ALBOM_ALLOW_RAW_TOOL` default: `false`
-- `ALBOM_CATALOG_TTL_MS` default: `300000`
-- `ALBOM_HTTP_TIMEOUT_MS` default: `90000`
-- `ALBOM_MAX_RETRIES` default: `2`
-- `ALBOM_MAX_UPLOAD_BYTES` default: `26214400`
+```bash
+npm install alittlebitofmoney-mcp
+```
 
-## Compact profile tools
+## Configuration
 
+Configure via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALBOM_BASE_URL` | `https://alittlebitofmoney.com` | API base URL |
+| `ALBOM_BEARER_TOKEN` | _(none)_ | Prepaid balance token (strongly recommended) |
+| `ALBOM_TOOL_PROFILE` | `compact` | Tool profile: `compact` or `full` |
+| `ALBOM_INCLUDE_MODERATION` | `false` (compact), `true` (full) | Include moderation tools |
+| `ALBOM_INCLUDE_EMBEDDINGS` | `false` (compact), `true` (full) | Include embedding tools |
+| `ALBOM_INCLUDE_VIDEO` | `true` | Include video generation tools |
+| `ALBOM_ALLOW_RAW_TOOL` | `false` | Expose `albom_raw_call` tool (full profile only) |
+| `ALBOM_CATALOG_TTL_MS` | `300000` (5 min) | Catalog cache TTL |
+| `ALBOM_HTTP_TIMEOUT_MS` | `90000` (90 sec) | HTTP request timeout |
+| `ALBOM_MAX_RETRIES` | `2` | Max retry attempts for failed requests |
+| `ALBOM_MAX_UPLOAD_BYTES` | `26214400` (25 MB) | Max upload file size |
+
+## Tool Profiles
+
+### Compact Profile (Default)
+
+Optimized for AI agents with minimal tool ambiguity. Consolidates overlapping endpoints into semantic tools:
+
+| Tool | Purpose | Maps to Endpoint |
+|------|---------|------------------|
+| `albom_catalog_get` | Get live API catalog | `/api/catalog` |
+| `albom_text_generate` | Generate text completions | `/v1/responses` |
+| `albom_image_generate` | Generate images | `/v1/images/generations` |
+| `albom_image_edit` | Edit images | `/v1/images/edits` |
+| `albom_audio_transcribe` | Transcribe audio (with optional translation) | `/v1/audio/transcriptions` (+ `/translations`) |
+| `albom_audio_speech` | Generate speech | `/v1/audio/speech` |
+| `albom_video_generate` | Generate videos (if enabled) | `/v1/video/generations` |
+| `albom_safety_moderate` | Content moderation (if enabled) | `/v1/moderations` |
+| `albom_embedding_create` | Create embeddings (if enabled) | `/v1/embeddings` |
+
+**Consolidations**:
+- Hides `/v1/chat/completions` in favor of `/v1/responses` (identical model sets)
+- Folds `/v1/audio/translations` into `albom_audio_transcribe` via boolean flag
+
+### Full Profile
+
+One tool per catalog endpoint for comprehensive coverage:
+
+- `albom_openai_chat_completions`
+- `albom_openai_responses`
+- `albom_openai_images_generations`
+- `albom_openai_images_edits`
+- `albom_openai_images_variations`
+- `albom_openai_audio_speech`
+- `albom_openai_audio_transcriptions`
+- `albom_openai_audio_translations`
+- `albom_openai_embeddings`
+- `albom_openai_moderations`
+- `albom_openai_video_generations`
 - `albom_catalog_get`
-- `albom_text_generate`
-- `albom_image_generate`
-- `albom_image_edit`
-- `albom_audio_transcribe`
-- `albom_audio_speech`
-- `albom_video_generate` (if enabled)
-- `albom_safety_moderate` (if enabled)
-- `albom_embedding_create` (if enabled)
+- `albom_raw_call` (if `ALBOM_ALLOW_RAW_TOOL=true`)
 
-## Full profile tools
+## Authentication
 
-- One tool per catalog endpoint, for example:
-  - `albom_openai_chat_completions`
-  - `albom_openai_responses`
-  - `albom_openai_images_generations`
-  - `albom_openai_audio_translations`
-- Plus `albom_catalog_get`
-- Optional `albom_raw_call` when `ALBOM_ALLOW_RAW_TOOL=true`
+### Bearer Token (Recommended)
+
+Set `ALBOM_BEARER_TOKEN` to your prepaid balance token. All requests will use `Authorization: Bearer <token>`.
+
+**Get a token**:
+```bash
+# 1. Create topup invoice
+curl -X POST https://alittlebitofmoney.com/topup \
+  -H "Content-Type: application/json" \
+  -d '{"amount_sats":1000}'
+
+# 2. Pay invoice with Lightning wallet, then claim
+curl -X POST https://alittlebitofmoney.com/topup/claim \
+  -H "Content-Type: application/json" \
+  -d '{"preimage":"<hex-preimage>"}'
+```
+
+### No Token (L402 Flow)
+
+Without a token, calls will return `402 Payment Required` with a Lightning invoice. The MCP server will surface this as an error with payment details.
+
+## Usage Examples
+
+### With Claude Desktop
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "alittlebitofmoney": {
+      "command": "node",
+      "args": ["/path/to/alittlebitofmoney-mcp/dist/server.js"],
+      "env": {
+        "ALBOM_BEARER_TOKEN": "abl_your_token_here",
+        "ALBOM_TOOL_PROFILE": "compact"
+      }
+    }
+  }
+}
+```
+
+### Programmatic Usage
+
+```typescript
+import { createAlbomServer } from 'alittlebitofmoney-mcp';
+
+const server = createAlbomServer({
+  baseUrl: 'https://alittlebitofmoney.com',
+  bearerToken: process.env.ALBOM_BEARER_TOKEN,
+  toolProfile: 'compact'
+});
+
+// Start server
+await server.run();
+```
+
+## Development
+
+### Build
+
+```bash
+npm run build
+```
+
+### Test
+
+```bash
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+```
+
+### Dev Server
+
+```bash
+npm run dev           # Watch and rebuild
+npm run start:dev     # Run without build
+```
+
+### Smoke Test (Live API)
+
+```bash
+ALBOM_BEARER_TOKEN=<token> npm run smoke:live
+```
+
+## Architecture
+
+### Core Modules
+
+- **`catalog.ts`**: Fetches and validates `/api/catalog`, detects changes
+- **`config.ts`**: Environment variable configuration and validation
+- **`dedup.ts`**: Model set deduplication logic (Jaccard similarity)
+- **`httpClient.ts`**: HTTP client with retry logic, multipart support, bearer auth
+- **`tools/`**: Tool implementations for compact and full profiles
+- **`results.ts`**: Response normalization and error handling
+- **`uploads.ts`**: File upload handling (path and base64)
+- **`server.ts`**: MCP server implementation
+
+### Catalog Sync
+
+1. Fetches `/api/catalog` on startup
+2. Caches for `ALBOM_CATALOG_TTL_MS`
+3. Periodically refreshes and compares
+4. Sends `notifications/tools/list_changed` if catalog changes
+5. Clients re-fetch tool definitions
+
+### Error Handling
+
+HTTP errors are normalized to MCP-friendly format:
+
+- `402 Payment Required`: Returns payment details (invoice, amount, expires_in)
+- `400 Bad Request`: Returns validation errors
+- `429 Rate Limited`: Returns retry-after info
+- `5xx Server Error`: Returns error message
+- Network errors: Automatic retry with exponential backoff
 
 ## Testing
 
+Test suite covers:
+
+- Catalog validation and normalization
+- Model set deduplication (Jaccard similarity)
+- HTTP error normalization
+- Multipart upload encoding (path + base64)
+- Tool list change detection
+- Bearer token authentication
+- Retry logic
+
+Run tests:
 ```bash
 npm test
 ```
 
-The test suite covers catalog validation/normalization, dedup logic, HTTP/error normalization, multipart uploads (path + base64), and tools list-changed behavior.
+## Publishing
 
-## Publish
-
-1. Build and test:
 ```bash
+# 1. Build and test
 npm run build
 npm test
-```
 
-2. Check publish artifact:
-```bash
+# 2. Check package contents
 npm pack --dry-run
-```
 
-3. Publish:
-```bash
+# 3. Publish
 npm login
-npm version patch
+npm version patch  # or minor/major
 npm publish --access public
 ```
+
+## Project Structure
+
+```
+.
+├── src/
+│   ├── catalog.ts         # Catalog fetching and tracking
+│   ├── config.ts          # Environment configuration
+│   ├── dedup.ts           # Model set deduplication
+│   ├── httpClient.ts      # HTTP client with retries
+│   ├── server.ts          # MCP server implementation
+│   ├── tools/             # Tool implementations
+│   │   ├── compact.ts     # Compact profile tools
+│   │   ├── full.ts        # Full profile tools
+│   │   └── shared.ts      # Shared tool utilities
+│   ├── results.ts         # Response normalization
+│   ├── uploads.ts         # File upload handling
+│   ├── types.ts           # TypeScript types
+│   └── index.ts           # Public exports
+├── test/                  # Test suite
+├── scripts/               # Utility scripts
+├── dist/                  # Compiled output
+└── ALITTLEBITOFMONEY_MCP_IMPLEMENTATION_SPEC.md  # Design spec
+
+Documentation:
+└── ALITTLEBITOFMONEY_MCP_IMPLEMENTATION_SPEC.md
+```
+
+## MCP Specification
+
+This server implements [MCP spec revision 2025-11-25](https://modelcontextprotocol.io/specification).
+
+Supported features:
+- Tools capability
+- Notifications capability (`tools/list_changed`)
+- Tool annotations (`title`, `readOnlyHint`, `idempotentHint`)
+- stdio transport
+
+## License
+
+MIT - See LICENSE file.
+
+## Contributing
+
+See WORKLOG.md for recent changes and development history.
